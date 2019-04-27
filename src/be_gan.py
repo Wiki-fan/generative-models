@@ -91,7 +91,7 @@ class BEGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
 
-    def __init__(self, image_size, z_dim):
+    def __init__(self, Generator, Discriminator, image_size, z_dim):
         super().__init__()
 
         self.__dict__.update(locals())
@@ -345,11 +345,14 @@ class BEGANTrainer:
 
 
 if __name__ == '__main__':
+    from src.mnist_utils import get_data
+
     # Load in binarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = BEGAN(image_size=(28, 28),
+    model = BEGAN(Generator, Discriminator,
+                  image_size=(28, 28),
                   z_dim=20)
 
     # Init trainer

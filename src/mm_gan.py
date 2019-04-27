@@ -31,58 +31,26 @@ from tqdm import tqdm
 
 from src.utils import *
 
-
-class Generator(nn.Module):
-    """ Generator. Input is noise, output is a generated image.
-    """
-
-    def __init__(self, image_shape, z_dim):
-        super().__init__()
-
-        self.__dict__.update(locals())
-
-        hidden_dim = 400
-        self.linear = nn.Linear(z_dim, hidden_dim)
-        self.generate = nn.Linear(hidden_dim, np.prod(image_shape))
-
-    def forward(self, x):
-        activated = F.relu(self.linear(x))
-        generation = torch.sigmoid(self.generate(activated))
-        generation = generation.view((x.shape[0],) + self.image_shape)
-        return generation
-
-
-class Discriminator(nn.Module):
-    """ Discriminator. Input is an image (real or generated), output is P(generated).
-    """
-
-    def __init__(self, image_shape, output_dim):
-        super().__init__()
-
-        self.__dict__.update(locals())
-
-        hidden_dim = 400
-        self.linear = nn.Linear(np.prod(image_shape), hidden_dim)
-        self.discriminate = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        x = x.view(x.shape[0], -1)
-        activated = F.relu(self.linear(x))
-        discrimination = torch.sigmoid(self.discriminate(activated))
-        return discrimination
-
-
 class MMGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
 
-    def __init__(self, image_shape, z_dim, output_dim=1):
+    def __init__(self, Generator, Discriminator, image_shape, z_dim, output_dim=1):
         super().__init__()
 
         self.__dict__.update(locals())
 
         self.G = Generator(image_shape, z_dim)
-        self.D = Discriminator(image_shape, output_dim)
+        class MMGANDiscriminator(Discriminator):
+            """ Discriminator. Input is an image (real or generated), output is P(generated).
+            """
+
+            def __init__(self, image_shape, output_dim):
+                super().__init__(image_shape, output_dim)
+
+            def forward(self, x):
+                return torch.sigmoid(x)
+        self.D = MMGANDiscriminator(image_shape, output_dim)
 
 
 class MMGANTrainer:
@@ -321,11 +289,13 @@ class MMGANTrainer:
 
 
 if __name__ == "__main__":
+    from src.mnist_utils import *
+
     # Load in binarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = MMGAN(image_shape=(28, 28),
+    model = MMGAN(Generator, Discriminator, image_shape=(28, 28),
                   z_dim=20)
 
     # Init trainer

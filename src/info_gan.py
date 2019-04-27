@@ -56,7 +56,6 @@ class Generator(nn.Module):
         self.generate = nn.Linear(hidden_dim, np.prod(image_shape))
 
     def forward(self, x):
-        x = x.view(x.shape[0], -1)
         activated = F.relu(self.linear(x))
         generation = torch.sigmoid(self.generate(activated))
         generation = generation.view((x.shape[0],) + self.image_shape)
@@ -408,6 +407,8 @@ class InfoGANTrainer:
 
 
 if __name__ == '__main__':
+    from src.mnist_utils import *
+
     # Load in binarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 

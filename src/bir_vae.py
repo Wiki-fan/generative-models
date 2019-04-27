@@ -391,6 +391,8 @@ class BIRVAETrainer:
 
 
 if __name__ == "__main__":
+    from src.mnist_utils import *
+
     # Load in binzarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
