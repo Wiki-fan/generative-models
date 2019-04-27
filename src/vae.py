@@ -22,7 +22,7 @@ look like, read up on "Karl Pearson's Crabs." The basic idea was that a
 scientist collected data on a population of crabs, noticed that the distribution
 was non-normal, and Pearson postulated it was because there were likely more
 than one population of crabs studied. This would've been a latent variable,
-since the data colllector did not initially know or perhaps even suspect this.
+since the data collector did not initially know or perhaps even suspect this.
 """
 
 import torch, torchvision
@@ -41,13 +41,14 @@ from copy import deepcopy
 from tqdm import tqdm
 from itertools import product
 
-from utils import *
+from src.utils import *
 
 
 class Encoder(nn.Module):
     """ MLP encoder for VAE. Input is an image,
     outputs are the mean, std of the latent variable z pre-reparametrization
     """
+
     def __init__(self, image_size, hidden_dim, z_dim):
         super().__init__()
 
@@ -65,6 +66,7 @@ class Decoder(nn.Module):
     """ MLP decoder for VAE. Input is a reparametrized latent representation,
     output is reconstructed image
     """
+
     def __init__(self, z_dim, hidden_dim, image_size):
         super().__init__()
 
@@ -81,6 +83,7 @@ class VAE(nn.Module):
     """ VAE super class to reconstruct an image. Contains reparametrization
     method for latent variable z
     """
+
     def __init__(self, image_size=784, hidden_dim=400, z_dim=20):
         super().__init__()
 
@@ -89,7 +92,7 @@ class VAE(nn.Module):
         self.encoder = Encoder(image_size=image_size, hidden_dim=hidden_dim, z_dim=z_dim)
         self.decoder = Decoder(z_dim=z_dim, hidden_dim=hidden_dim, image_size=image_size)
 
-        self.shape = int(image_size ** 0.5)
+        self.shape = int(image_size**0.5)
 
     def forward(self, x):
         mu, log_var = self.encoder(x)
@@ -102,7 +105,7 @@ class VAE(nn.Module):
         where epsilon ~ N(0, 1).
         """
         epsilon = to_cuda(torch.randn(mu.shape))
-        z = mu + epsilon * torch.exp(log_var/2) # 2 for convert var to std
+        z = mu + epsilon * torch.exp(log_var / 2)  # 2 for convert var to std
         return z
 
 
@@ -137,18 +140,17 @@ class VAETrainer:
         """
         # Adam optimizer, sigmoid cross entropy for reconstructing binary MNIST
         optimizer = optim.Adam(params=[p for p in self.model.parameters()
-                                      if p.requires_grad],
+                                       if p.requires_grad],
                                lr=lr,
                                weight_decay=weight_decay)
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs+1)):
+        for epoch in tqdm(range(1, num_epochs + 1)):
 
             self.model.train()
             epoch_loss, epoch_recon, epoch_kl = [], [], []
 
             for batch in self.train_iter:
-
                 # Zero out gradients
                 optimizer.zero_grad()
 
@@ -180,9 +182,9 @@ class VAETrainer:
                 self.best_val_loss = val_loss
 
             # Progress logging
-            print ("Epoch[%d/%d], Total Loss: %.4f, Reconst Loss: %.4f, KL Div: %.7f, Val Loss: %.4f"
-                   %(epoch, num_epochs, np.mean(epoch_loss),
-                   np.mean(epoch_recon), np.mean(epoch_kl), val_loss))
+            print("Epoch[%d/%d], Total Loss: %.4f, Reconst Loss: %.4f, KL Div: %.7f, Val Loss: %.4f"
+                  % (epoch, num_epochs, np.mean(epoch_loss),
+                     np.mean(epoch_recon), np.mean(epoch_kl), val_loss))
             self.num_epochs += 1
 
             # Debugging and visualization purposes
@@ -200,7 +202,7 @@ class VAETrainer:
         outputs, mu, log_var = self.model(images)
 
         # L2 (mean squared error) loss
-        recon_loss = torch.sum((images - outputs) ** 2)
+        recon_loss = torch.sum((images - outputs)**2)
 
         # Kullback-Leibler divergence between encoded space, Gaussian
         kl_diverge = self.kl_divergence(mu, log_var)
@@ -234,9 +236,9 @@ class VAETrainer:
         grid_size, k = int(reconst_images.shape[0]**0.5), 0
         fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
         for i, j in product(range(grid_size), range(grid_size)):
-            ax[i,j].get_xaxis().set_visible(False)
-            ax[i,j].get_yaxis().set_visible(False)
-            ax[i,j].imshow(reconst_images[k].data.numpy(), cmap='gray')
+            ax[i, j].get_xaxis().set_visible(False)
+            ax[i, j].get_yaxis().set_visible(False)
+            ax[i, j].imshow(reconst_images[k].data.numpy(), cmap='gray')
             k += 1
 
         # Save
@@ -248,7 +250,7 @@ class VAETrainer:
                                          outname + 'real.png',
                                          nrow=grid_size)
             torchvision.utils.save_image(reconst_images.unsqueeze(1).data,
-                                         outname + 'reconst_%d.png' %(epoch),
+                                         outname + 'reconst_%d.png' % (epoch),
                                          nrow=grid_size)
 
     def sample_images(self, epoch=-100, num_images=36, save=True):
@@ -261,11 +263,11 @@ class VAETrainer:
 
         # Plot
         to_img = ToPILImage()
-        img = to_img(make_grid(sample.data.view(num_images, 
-                                                -1, 
-                                                self.model.shape, 
+        img = to_img(make_grid(sample.data.view(num_images,
+                                                -1,
+                                                self.model.shape,
                                                 self.model.shape),
-                     nrow=int(num_images**0.5)))
+                               nrow=int(num_images**0.5)))
         display(img)
 
         # Save
@@ -273,7 +275,7 @@ class VAETrainer:
             outname = '../viz/' + self.name + '/'
             if not os.path.exists(outname):
                 os.makedirs(outname)
-            img.save(outname + 'sample_%d.png' %(epoch))
+            img.save(outname + 'sample_%d.png' % (epoch))
 
     def sample_interpolated_images(self):
         """ Viz method 2: sample two random latent vectors from p(z),
@@ -286,7 +288,7 @@ class VAETrainer:
 
         # Interpolate within latent vectors
         for alpha in np.linspace(0, 1, self.model.z_dim):
-            z = to_cuda(alpha*z1 + (1-alpha)*z2)
+            z = to_cuda(alpha * z1 + (1 - alpha) * z2)
             sample = self.model.decoder(z)
             display(to_img(make_grid(sample.data.view(-1,
                                                       self.model.shape,
@@ -315,7 +317,7 @@ class VAETrainer:
 
         # Plot
         labels, m1s, m2s = zip(*data)
-        plt.figure(figsize=(10,10))
+        plt.figure(figsize=(10, 10))
         plt.scatter(m1s, m2s, c=labels)
         plt.legend([str(i) for i in set(labels)])
 
@@ -349,7 +351,7 @@ class VAETrainer:
         """ Visualize reconstruction loss """
         # Set style, figure size
         plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8,6)
+        plt.rcParams["figure.figsize"] = (8, 6)
 
         # Plot reconstruction loss in red, KL divergence in green
         plt.plot(np.linspace(1, self.num_epochs, len(self.recon_loss)),
@@ -373,8 +375,8 @@ class VAETrainer:
         state = torch.load(loadpath)
         self.model.load_state_dict(state)
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     # Load in binzarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
@@ -385,10 +387,10 @@ if __name__ == "__main__":
 
     # Init trainer
     trainer = VAETrainer(model=model,
-                      train_iter=train_iter,
-                      val_iter=val_iter,
-                      test_iter=test_iter,
-                      viz=False)
+                         train_iter=train_iter,
+                         val_iter=val_iter,
+                         test_iter=test_iter,
+                         viz=False)
 
     # Train
     trainer.train(num_epochs=5,

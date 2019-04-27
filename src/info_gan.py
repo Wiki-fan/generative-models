@@ -39,21 +39,27 @@ import numpy as np
 from itertools import product
 from tqdm import tqdm
 
-from utils import *
+from src.utils import *
 
 
 class Generator(nn.Module):
     """ Generator. Input is noise and latent variables, output is a generated
     image.
     """
-    def __init__(self, image_size, hidden_dim, z_dim, disc_dim, cont_dim):
+
+    def __init__(self, image_shape, z_dim, disc_dim, cont_dim):
         super().__init__()
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
         self.linear = nn.Linear(z_dim + disc_dim + cont_dim, hidden_dim)
-        self.generate = nn.Linear(hidden_dim, image_size)
+        self.generate = nn.Linear(hidden_dim, np.prod(image_shape))
 
     def forward(self, x):
+        x = x.view(x.shape[0], -1)
         activated = F.relu(self.linear(x))
         generation = torch.sigmoid(self.generate(activated))
+        generation = generation.view((x.shape[0],) + self.image_shape)
         return generation
 
 
@@ -61,15 +67,17 @@ class Discriminator(nn.Module):
     """ Discriminator. Input is an image (real or generated), output is
     P(generated), continuous latent variables, discrete latent variables.
     """
-    def __init__(self, image_size, hidden_dim, output_dim):
-        super().__init__()
 
+    def __init__(self, image_shape, output_dim):
+        super().__init__()
         self.__dict__.update(locals())
 
-        self.linear = nn.Linear(image_size, hidden_dim)
+        hidden_dim = 400
+        self.linear = nn.Linear(np.prod(image_shape), hidden_dim)
         self.discriminator = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
+        x = x.view(x.shape[0], -1)
         activated = F.relu(self.linear(x))
         discrimination = torch.sigmoid(self.discriminator(activated))
         return discrimination
@@ -79,15 +87,18 @@ class Q(nn.Module):
     """ Auxiliary network Q(c|x) that approximates P(c|x), the true posterior.
     Input is an image, output are latent variables.
     """
-    def __init__(self, image_size, hidden_dim, disc_dim, cont_dim):
+
+    def __init__(self, image_shape, disc_dim, cont_dim):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.linear = nn.Linear(image_size, hidden_dim)
-        self.inference = nn.Linear(hidden_dim, disc_dim+cont_dim)
+        hidden_dim = 400
+        self.linear = nn.Linear(np.prod(image_shape), hidden_dim)
+        self.inference = nn.Linear(hidden_dim, disc_dim + cont_dim)
 
     def forward(self, x):
+        x = x.view(x.shape[0], -1)
         activated = F.relu(self.linear(x))
         inferred = self.inference(activated)
         discrete, continuous = inferred[:, :self.disc_dim], inferred[:, self.disc_dim:]
@@ -97,21 +108,21 @@ class Q(nn.Module):
 class InfoGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
-    def __init__(self, image_size, hidden_dim, z_dim, disc_dim, cont_dim, output_dim=1):
+
+    def __init__(self, image_size, z_dim, disc_dim, cont_dim, output_dim=1):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.G = Generator(image_size, hidden_dim, z_dim, disc_dim, cont_dim)
-        self.D = Discriminator(image_size, hidden_dim, output_dim)
-        self.Q = Q(image_size, hidden_dim, disc_dim, cont_dim)
-
-        self.shape = int(image_size ** 0.5)
+        self.G = Generator(image_size, z_dim, disc_dim, cont_dim)
+        self.D = Discriminator(image_size, output_dim)
+        self.Q = Q(image_size, disc_dim, cont_dim)
 
 
 class InfoGANTrainer:
     """ Object to hold data iterators, train a GAN variant
     """
+
     def __init__(self, model, train_iter, val_iter, test_iter, viz=False):
         self.model = to_cuda(model)
         self.name = model.__class__.__name__
@@ -145,14 +156,14 @@ class InfoGANTrainer:
 
         D_optimizer = optim.Adam(params=parameters['D'], lr=D_lr)
         G_optimizer = optim.Adam(params=parameters['G'], lr=G_lr)
-        MI_optimizer = optim.Adam(params=(parameters['G']+parameters['Q']), lr=G_lr)
+        MI_optimizer = optim.Adam(params=(parameters['G'] + parameters['Q']), lr=G_lr)
 
         # Approximate steps/epoch given D_steps per epoch
         # --> roughly train in the same way as if D_step (1) == G_step (1)
         epoch_steps = int(np.ceil(len(self.train_iter) / (D_steps)))
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs+1)):
+        for epoch in tqdm(range(1, num_epochs + 1)):
 
             self.model.train()
             G_losses, D_losses, MI_losses = [], [], []
@@ -162,7 +173,6 @@ class InfoGANTrainer:
                 D_step_loss = []
 
                 for _ in range(D_steps):
-
                     # Reshape images
                     images = self.process_batch(self.train_iter)
 
@@ -210,8 +220,8 @@ class InfoGANTrainer:
             self.MIlosses.extend(MI_losses)
 
             # Progress logging
-            print ("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f, MI Loss: %.4f"
-                   %(epoch, num_epochs, np.mean(G_losses),
+            print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f, MI Loss: %.4f"
+                  % (epoch, num_epochs, np.mean(G_losses),
                      np.mean(D_losses), np.mean(MI_losses)))
             self.num_epochs += 1
 
@@ -257,9 +267,9 @@ class InfoGANTrainer:
 
         # Get noise (denoted z), classify it using G, then classify the output of G using D.
         noise = self.compute_noise(images.shape[0], self.model.z_dim,
-                                   self.model.disc_dim, self.model.cont_dim, c=None) # c=[c1, c2], z
-        G_output = self.model.G(noise) # G(c, z)
-        DG_score = self.model.D(G_output) # D(G(c, z))
+                                   self.model.disc_dim, self.model.cont_dim, c=None)  # c=[c1, c2], z
+        G_output = self.model.G(noise)  # G(c, z)
+        DG_score = self.model.D(G_output)  # D(G(c, z))
 
         # Compute the non-saturating loss for how D did versus the generations of G using sigmoid cross entropy
         G_loss = -torch.mean(torch.log(DG_score + 1e-8))
@@ -291,11 +301,11 @@ class InfoGANTrainer:
 
         # Compute mutual information loss
         # Discrete component
-        discrete_target = noise[:, self.model.z_dim:self.model.z_dim+self.model.disc_dim]
+        discrete_target = noise[:, self.model.z_dim:self.model.z_dim + self.model.disc_dim]
         disc_loss = F.cross_entropy(Q_discrete, torch.max(discrete_target, 1)[1])
 
         # Continuous component
-        continuous_target = noise[:, self.model.z_dim+self.model.disc_dim:]
+        continuous_target = noise[:, self.model.z_dim + self.model.disc_dim:]
         cont_loss = F.mse_loss(Q_continuous, continuous_target)
 
         # Sum it up
@@ -314,7 +324,7 @@ class InfoGANTrainer:
         # Uniformly distributed categorical latent variables (c1)
         disc_c = torch.zeros((batch_size, disc_dim))
         if c is not None:
-            categorical = int(c)*torch.ones((batch_size,), dtype=torch.long)
+            categorical = int(c) * torch.ones((batch_size,), dtype=torch.long)
         else:
             categorical = torch.randint(0, disc_dim, (batch_size,), dtype=torch.long)
         disc_c[range(batch_size), categorical] = 1
@@ -327,7 +337,7 @@ class InfoGANTrainer:
     def process_batch(self, iterator):
         """ Generate a process batch to be input into the discriminator D """
         images, _ = next(iter(iterator))
-        images = to_cuda(images.view(images.shape[0], -1))
+        images = to_cuda(images)
         return images
 
     def generate_images(self, epoch, num_outputs=36, save=True, c=None):
@@ -343,16 +353,18 @@ class InfoGANTrainer:
         images = self.model.G(noise)
 
         # Reshape to proper image size
-        images = images.view(images.shape[0], self.model.shape, self.model.shape, -1).squeeze()
+        images = images.view(images.shape[0],
+                             *self.model.image_shape
+                             ).squeeze()
 
         # Plot
         plt.close()
         grid_size, k = int(num_outputs**0.5), 0
         fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
         for i, j in product(range(grid_size), range(grid_size)):
-            ax[i,j].get_xaxis().set_visible(False)
-            ax[i,j].get_yaxis().set_visible(False)
-            ax[i,j].imshow(images[k].data.numpy(), cmap='gray')
+            ax[i, j].get_xaxis().set_visible(False)
+            ax[i, j].get_yaxis().set_visible(False)
+            ax[i, j].imshow(images[k].data.numpy(), cmap='gray')
             k += 1
 
         # Save images if desired
@@ -362,13 +374,13 @@ class InfoGANTrainer:
                 os.makedirs(outname)
             torchvision.utils.save_image(images.unsqueeze(1).data,
                                          outname + 'reconst_%d.png'
-                                         %(epoch), nrow=grid_size)
+                                         % (epoch), nrow=grid_size)
 
     def viz_loss(self):
         """ Visualize loss for the generator, discriminator """
         # Set style, figure size
         plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8,6)
+        plt.rcParams["figure.figsize"] = (8, 6)
 
         # Plot Discriminator loss in red
         plt.plot(np.linspace(1, self.num_epochs, len(self.Dlosses)),
@@ -394,14 +406,13 @@ class InfoGANTrainer:
         state = torch.load(loadpath)
         self.model.load_state_dict(state)
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     # Load in binarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = InfoGAN(image_size=784,
-                    hidden_dim=400,
+    model = InfoGAN(image_size=(28, 28),
                     z_dim=20,
                     disc_dim=10,
                     cont_dim=10)

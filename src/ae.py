@@ -23,13 +23,14 @@ from copy import deepcopy
 from tqdm import tqdm
 from itertools import product
 
-from utils import *
+from src.utils import *
 
 
 class Encoder(nn.Module):
     """ Feedforward network encoder. Input is an image, output is encoded
     vector representation of that image.
     """
+
     def __init__(self, image_size, hidden_dim):
         super().__init__()
 
@@ -43,6 +44,7 @@ class Decoder(nn.Module):
     """ Feedforward network decoder. Input is an encoded vector representation,
     output is reconstructed image.
     """
+
     def __init__(self, hidden_dim, image_size):
         super().__init__()
 
@@ -55,6 +57,7 @@ class Decoder(nn.Module):
 class Autoencoder(nn.Module):
     """ Autoencoder super class to encode then decode an image
     """
+
     def __init__(self, image_size=784, hidden_dim=32):
         super().__init__()
 
@@ -97,18 +100,17 @@ class AutoencoderTrainer:
 
         # Adam optimizer, sigmoid cross entropy for reconstructing binary MNIST
         optimizer = optim.Adam(params=[p for p in self.model.parameters()
-                                            if p.requires_grad],
-                                 lr=lr,
-                                 weight_decay=weight_decay)
+                                       if p.requires_grad],
+                               lr=lr,
+                               weight_decay=weight_decay)
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs+1)):
+        for epoch in tqdm(range(1, num_epochs + 1)):
 
             self.model.train()
             epoch_loss = []
 
             for batch in self.train_iter:
-
                 # Zero out gradients
                 optimizer.zero_grad()
 
@@ -135,8 +137,8 @@ class AutoencoderTrainer:
                 self.best_val_loss = val_loss
 
             # Print progress
-            print ("Epoch[%d/%d], Train Loss: %.4f, Val Loss: %.4f"
-                   %(epoch, num_epochs, np.mean(epoch_loss), val_loss))
+            print("Epoch[%d/%d], Train Loss: %.4f, Val Loss: %.4f"
+                  % (epoch, num_epochs, np.mean(epoch_loss), val_loss))
             self.num_epochs += 1
 
             # Debugging and visualization purposes
@@ -155,7 +157,7 @@ class AutoencoderTrainer:
         outputs = self.model(images)
 
         # L2 (mean squared error) loss.
-        recon_loss = torch.sum((images - outputs) ** 2)
+        recon_loss = torch.sum((images - outputs)**2)
 
         return recon_loss
 
@@ -175,9 +177,9 @@ class AutoencoderTrainer:
         grid_size, k = int(reconst_images.shape[0]**0.5), 0
         fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
         for i, j in product(range(grid_size), range(grid_size)):
-            ax[i,j].get_xaxis().set_visible(False)
-            ax[i,j].get_yaxis().set_visible(False)
-            ax[i,j].imshow(reconst_images[k].data.numpy(), cmap='gray')
+            ax[i, j].get_xaxis().set_visible(False)
+            ax[i, j].get_yaxis().set_visible(False)
+            ax[i, j].imshow(reconst_images[k].data.numpy(), cmap='gray')
             k += 1
 
         # Save
@@ -189,14 +191,14 @@ class AutoencoderTrainer:
                                          outname + 'real.png',
                                          nrow=grid_size)
             torchvision.utils.save_image(reconst_images.unsqueeze(1).data,
-                                         outname + 'reconst_%d.png' %(epoch),
+                                         outname + 'reconst_%d.png' % (epoch),
                                          nrow=grid_size)
 
     def viz_loss(self):
         """ Visualize reconstruction loss """
         # Set style, figure size
         plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8,6)
+        plt.rcParams["figure.figsize"] = (8, 6)
 
         # Plot reconstruction loss in red
         plt.plot(np.linspace(1, self.num_epochs, len(self.recon_loss)),
@@ -219,7 +221,6 @@ class AutoencoderTrainer:
 
 
 if __name__ == '__main__':
-
     # Load in binzarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 

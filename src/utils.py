@@ -7,11 +7,13 @@ def to_var(x):
     """ Make a tensor cuda-erized and requires gradient """
     return to_cuda(x).requires_grad_()
 
+
 def to_cuda(x):
     """ Cuda-erize a tensor """
     if torch.cuda.is_available():
         x = x.cuda()
     return x
+
 
 def get_data(BATCH_SIZE=100):
     """ Load data for binared MNIST """
@@ -19,13 +21,13 @@ def get_data(BATCH_SIZE=100):
 
     # Download our data
     train_dataset = datasets.MNIST(root='./data/',
-                                    train=True,
-                                    transform=transforms.ToTensor(),
-                                    download=True)
+                                   train=True,
+                                   transform=transforms.ToTensor(),
+                                   download=True)
 
     test_dataset = datasets.MNIST(root='./data/',
-                                   train=False,
-                                   transform=transforms.ToTensor())
+                                  train=False,
+                                  transform=transforms.ToTensor())
 
     # Use greyscale values as sampling probabilities to get back to [0,1]
     train_img = torch.stack([torch.bernoulli(d[0]) for d in train_dataset])

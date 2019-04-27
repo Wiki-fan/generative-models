@@ -31,13 +31,14 @@ from copy import deepcopy
 from tqdm import tqdm
 from itertools import product
 
-from utils import *
+from src.utils import *
 
 
 class Encoder(nn.Module):
     """ MLP encoder for VAE. Input is an image, outputs are the mean and std of
     the latent representation z pre-reparametrization
     """
+
     def __init__(self, image_size, hidden_dim, z_dim):
         super().__init__()
 
@@ -54,6 +55,7 @@ class Decoder(nn.Module):
     """ MLP decoder for VAE. Input is a reparametrized latent representation,
     output is reconstructed image
     """
+
     def __init__(self, z_dim, hidden_dim, image_size):
         super().__init__()
 
@@ -70,6 +72,7 @@ class BIRVAE(nn.Module):
     """ VAE super class to reconstruct an image. Contains reparametrization
     method. Parameter I indicates how many 'bits' should be let through.
     """
+
     def __init__(self, image_size=784, hidden_dim=400, z_dim=20, I=13.3):
         super().__init__()
 
@@ -78,8 +81,8 @@ class BIRVAE(nn.Module):
         self.encoder = Encoder(image_size=image_size, hidden_dim=hidden_dim, z_dim=z_dim)
         self.decoder = Decoder(z_dim=z_dim, hidden_dim=hidden_dim, image_size=image_size)
 
-        self.shape = int(image_size ** 0.5)
-        self.set_var = 1/(4**(I/z_dim))
+        self.shape = int(image_size**0.5)
+        self.set_var = 1 / (4**(I / z_dim))
 
     def forward(self, x):
         mu = self.encoder(x)
@@ -92,7 +95,7 @@ class BIRVAE(nn.Module):
         eps = to_cuda(torch.from_numpy(np.random.normal(loc=0.0,
                                                         scale=self.set_var,
                                                         size=mu.shape)).float())
-        z = mu + eps # Algorithm 1
+        z = mu + eps  # Algorithm 1
         return z
 
 
@@ -132,13 +135,12 @@ class BIRVAETrainer:
                                weight_decay=weight_decay)
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs+1)):
+        for epoch in tqdm(range(1, num_epochs + 1)):
 
             self.model.train()
             epoch_loss, epoch_recon, epoch_mmd = [], [], []
 
             for batch in self.train_iter:
-
                 # Zero out gradients
                 optimizer.zero_grad()
 
@@ -169,8 +171,8 @@ class BIRVAETrainer:
                 self.best_val_loss = val_loss
 
             # Progress logging
-            print ("Epoch[%d/%d], Total Loss: %.4f, MSE Loss: %.4f, MMD Loss: %.4f, Val Loss: %.4f"
-                   %(epoch, num_epochs, np.mean(epoch_loss), np.mean(epoch_recon), np.mean(epoch_mmd), val_loss))
+            print("Epoch[%d/%d], Total Loss: %.4f, MSE Loss: %.4f, MMD Loss: %.4f, Val Loss: %.4f"
+                  % (epoch, num_epochs, np.mean(epoch_loss), np.mean(epoch_recon), np.mean(epoch_mmd), val_loss))
 
             # Debugging and visualization purposes
             if self.viz:
@@ -191,7 +193,7 @@ class BIRVAETrainer:
         outputs, z = self.model(images)
 
         # Mean squared error loss
-        mse_loss = torch.sum((images - outputs) ** 2)
+        mse_loss = torch.sum((images - outputs)**2)
 
         # Maximum mean discrepancy
         mmd_loss = LAMBDA * self.maximum_mean_discrepancy(z)
@@ -204,7 +206,7 @@ class BIRVAETrainer:
         x_kernel = self.compute_kernel(x, x)
         y_kernel = self.compute_kernel(z, z)
         xy_kernel = self.compute_kernel(x, z)
-        mmd_loss = x_kernel.sum() + y_kernel.sum() - 2*xy_kernel.sum()
+        mmd_loss = x_kernel.sum() + y_kernel.sum() - 2 * xy_kernel.sum()
         return mmd_loss
 
     def compute_kernel(self, x, y):
@@ -217,7 +219,7 @@ class BIRVAETrainer:
         tiled_x, tiled_y = x.expand(x_size, y_size, dim), y.expand(x_size, y_size, dim)
 
         # Compute Gaussian Kernel (Eqn. 13)
-        kernel_input = torch.div(torch.mean(torch.pow(tiled_x-tiled_y, 2), dim=2), dim)
+        kernel_input = torch.div(torch.mean(torch.pow(tiled_x - tiled_y, 2), dim=2), dim)
         return torch.exp(-kernel_input)
 
     def evaluate(self, iterator):
@@ -245,9 +247,9 @@ class BIRVAETrainer:
         grid_size, k = int(reconst_images.shape[0]**0.5), 0
         fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
         for i, j in product(range(grid_size), range(grid_size)):
-            ax[i,j].get_xaxis().set_visible(False)
-            ax[i,j].get_yaxis().set_visible(False)
-            ax[i,j].imshow(reconst_images[k].data.numpy(), cmap='gray')
+            ax[i, j].get_xaxis().set_visible(False)
+            ax[i, j].get_yaxis().set_visible(False)
+            ax[i, j].imshow(reconst_images[k].data.numpy(), cmap='gray')
             k += 1
 
         # Save
@@ -259,7 +261,7 @@ class BIRVAETrainer:
                                          outname + 'real.png',
                                          nrow=grid_size)
             torchvision.utils.save_image(reconst_images.unsqueeze(1).data,
-                                         outname + 'reconst_%d.png' %(epoch),
+                                         outname + 'reconst_%d.png' % (epoch),
                                          nrow=grid_size)
 
     def sample_images(self, epoch=-100, num_images=36, save=True):
@@ -285,7 +287,7 @@ class BIRVAETrainer:
             outname = '../viz/' + self.name + '/'
             if not os.path.exists(outname):
                 os.makedirs(outname)
-            img.save(outname + 'sample_%d.png' %(epoch))
+            img.save(outname + 'sample_%d.png' % (epoch))
 
     def sample_interpolated_images(self):
         """ Viz method 2: sample two random latent vectors from p(z),
@@ -298,7 +300,7 @@ class BIRVAETrainer:
 
         # Interpolate within latent vectors
         for alpha in np.linspace(0, 1, self.model.z_dim):
-            z = to_cuda(alpha*z1 + (1-alpha)*z2)
+            z = to_cuda(alpha * z1 + (1 - alpha) * z2)
             sample = self.model.decoder(z)
             display(to_img(make_grid(sample.data.view(-1,
                                                       self.model.shape,
@@ -327,7 +329,7 @@ class BIRVAETrainer:
 
         # Plot
         labels, m1s, m2s = zip(*data)
-        plt.figure(figsize=(10,10))
+        plt.figure(figsize=(10, 10))
         plt.scatter(m1s, m2s, c=labels)
         plt.legend([str(i) for i in set(labels)])
 
@@ -361,7 +363,7 @@ class BIRVAETrainer:
         """ Visualize reconstruction loss """
         # Set style, figure size
         plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8,6)
+        plt.rcParams["figure.figsize"] = (8, 6)
 
         # Plot reconstruction loss in red
         plt.plot(np.linspace(1, self.num_epochs, len(self.recon_loss)),
@@ -389,7 +391,6 @@ class BIRVAETrainer:
 
 
 if __name__ == "__main__":
-
     # Load in binzarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 

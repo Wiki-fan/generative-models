@@ -37,21 +37,26 @@ import numpy as np
 from itertools import product
 from tqdm import tqdm
 
-from src import utils
+from src.utils import *
 
 
 class Generator(nn.Module):
     """ Generator. Input is noise, output is a generated image.
     """
-    def __init__(self, image_size, hidden_dim, z_dim):
+
+    def __init__(self, image_shape, z_dim):
         super().__init__()
 
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
         self.linear = nn.Linear(z_dim, hidden_dim)
-        self.generate = nn.Linear(hidden_dim, image_size)
+        self.generate = nn.Linear(hidden_dim, np.prod(image_shape))
 
     def forward(self, x):
         activated = F.relu(self.linear(x))
         generation = torch.sigmoid(self.generate(activated))
+        generation = generation.view((x.shape[0],) + self.image_shape)
         return generation
 
 
@@ -59,13 +64,18 @@ class Discriminator(nn.Module):
     """ Critic (not trained to classify). Input is an image (real or generated),
     output is the approximate Wasserstein Distance between z~P(G(z)) and real.
     """
-    def __init__(self, image_size, hidden_dim, output_dim):
+
+    def __init__(self, image_shape, output_dim):
         super().__init__()
 
-        self.linear = nn.Linear(image_size, hidden_dim)
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
+        self.linear = nn.Linear(np.prod(image_shape), hidden_dim)
         self.discriminate = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
+        x = x.view(x.shape[0], -1)
         activated = F.relu(self.linear(x))
         discrimination = torch.sigmoid(self.discriminate(activated))
         return discrimination
@@ -74,20 +84,20 @@ class Discriminator(nn.Module):
 class WGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
-    def __init__(self, image_size, hidden_dim, z_dim, output_dim=1):
+
+    def __init__(self, image_shape, z_dim, output_dim=1):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.G = Generator(image_size, hidden_dim, z_dim)
-        self.D = Discriminator(image_size, hidden_dim, output_dim)
-
-        self.shape = int(image_size ** 0.5)
+        self.G = Generator(image_shape, z_dim)
+        self.D = Discriminator(image_shape, output_dim)
 
 
 class WGANTrainer:
     """ Object to hold data iterators, train a GAN variant
     """
+
     def __init__(self, model, train_iter, val_iter, test_iter, viz=False):
         self.model = to_cuda(model)
         self.name = model.__class__.__name__
@@ -117,16 +127,16 @@ class WGANTrainer:
         """
         # Initialize optimizers
         G_optimizer = optim.Adam(params=[p for p in self.model.G.parameters()
-                                        if p.requires_grad], lr=G_lr)
+                                         if p.requires_grad], lr=G_lr)
         D_optimizer = optim.Adam(params=[p for p in self.model.D.parameters()
-                                        if p.requires_grad], lr=D_lr)
+                                         if p.requires_grad], lr=D_lr)
 
         # Approximate steps/epoch given D_steps per epoch
         # --> roughly train in the same way as if D_step (1) == G_step (1)
         epoch_steps = int(np.ceil(len(self.train_iter) / (D_steps)))
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs+1)):
+        for epoch in tqdm(range(1, num_epochs + 1)):
 
             self.model.train()
             G_losses, D_losses = [], []
@@ -136,7 +146,6 @@ class WGANTrainer:
                 D_step_loss = []
 
                 for _ in range(D_steps):
-
                     # Reshape images
                     images = self.process_batch(self.train_iter)
 
@@ -178,8 +187,8 @@ class WGANTrainer:
             self.Dlosses.extend(D_losses)
 
             # Progress logging
-            print ("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
-                   %(epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
+            print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
+                  % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
             self.num_epochs += 1
 
             # Visualize generator progress
@@ -201,8 +210,8 @@ class WGANTrainer:
         G_output = self.model.G(noise)
 
         # Score real, generated images
-        DX_score = self.model.D(images) # D(x), "real"
-        DG_score = self.model.D(G_output) # D(G(x')), "fake"
+        DX_score = self.model.D(images)  # D(x), "real"
+        DG_score = self.model.D(G_output)  # D(G(x')), "fake"
 
         # Compute WGAN loss for D
         D_loss = -1 * (torch.mean(DX_score)) + torch.mean(DG_score)
@@ -219,9 +228,9 @@ class WGANTrainer:
             -E[D(G(z))]
         """
         # Get noise, classify it using G, then classify the output of G using D.
-        noise = self.compute_noise(images.shape[0], self.model.z_dim) # z
-        G_output = self.model.G(noise) # G(z)
-        DG_score = self.model.D(G_output) # D(G(z))
+        noise = self.compute_noise(images.shape[0], self.model.z_dim)  # z
+        G_output = self.model.G(noise)  # G(z)
+        DG_score = self.model.D(G_output)  # D(G(z))
 
         # Compute WGAN loss for G
         G_loss = -1 * (torch.mean(DG_score))
@@ -235,7 +244,7 @@ class WGANTrainer:
     def process_batch(self, iterator):
         """ Generate a process batch to be input into the Discriminator D """
         images, _ = next(iter(iterator))
-        images = to_cuda(images.view(images.shape[0], -1))
+        images = to_cuda(images)
         return images
 
     def clip_D_weights(self, clip):
@@ -255,18 +264,17 @@ class WGANTrainer:
 
         # Reshape to square image size
         images = images.view(images.shape[0],
-                             self.model.shape,
-                             self.model.shape,
-                             -1).squeeze()
+                             *self.model.image_shape
+                             ).squeeze()
 
         # Plot
         plt.close()
         grid_size, k = int(num_outputs**0.5), 0
         fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
         for i, j in product(range(grid_size), range(grid_size)):
-            ax[i,j].get_xaxis().set_visible(False)
-            ax[i,j].get_yaxis().set_visible(False)
-            ax[i,j].imshow(images[k].data.numpy(), cmap='gray')
+            ax[i, j].get_xaxis().set_visible(False)
+            ax[i, j].get_yaxis().set_visible(False)
+            ax[i, j].imshow(images[k].data.numpy(), cmap='gray')
             k += 1
 
         # Save images if desired
@@ -276,13 +284,13 @@ class WGANTrainer:
                 os.makedirs(outname)
             torchvision.utils.save_image(images.unsqueeze(1).data,
                                          outname + 'reconst_%d.png'
-                                         %(epoch), nrow=grid_size)
+                                         % (epoch), nrow=grid_size)
 
     def viz_loss(self):
         """ Visualize loss for the generator, discriminator """
         # Set style, figure size
         plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8,6)
+        plt.rcParams["figure.figsize"] = (8, 6)
 
         # Plot Discriminator loss in red
         plt.plot(np.linspace(1, self.num_epochs, len(self.Dlosses)),
@@ -310,14 +318,12 @@ class WGANTrainer:
 
 
 if __name__ == "__main__":
-
     # Load in binarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = WGAN(image_size=784,
-                  hidden_dim=400,
-                  z_dim=20)
+    model = WGAN(image_shape=(28, 28),
+                 z_dim=20)
 
     # Init trainer
     trainer = WGANTrainer(model=model,

@@ -42,21 +42,26 @@ import numpy as np
 from itertools import product
 from tqdm import tqdm
 
-from utils import *
+from src.utils import *
 
 
 class Generator(nn.Module):
     """ Generator. Input is noise, output is a generated image.
     """
-    def __init__(self, image_size, hidden_dim, z_dim):
+
+    def __init__(self, image_shape, z_dim):
         super().__init__()
 
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
         self.linear = nn.Linear(z_dim, hidden_dim)
-        self.generate = nn.Linear(hidden_dim, image_size)
+        self.generate = nn.Linear(hidden_dim, np.prod(image_shape))
 
     def forward(self, x):
         activated = F.relu(self.linear(x))
         generation = torch.sigmoid(self.generate(activated))
+        generation = generation.view((x.shape[0],) + self.image_shape)
         return generation
 
 
@@ -64,30 +69,35 @@ class Discriminator(nn.Module):
     """ Autoencoder. Input is an image (real, generated), output is the
     reconstructed image.
     """
-    def __init__(self, image_size, hidden_dim):
+
+    def __init__(self, image_shape):
         super().__init__()
 
-        self.encoder = nn.Linear(image_size, hidden_dim)
-        self.decoder = nn.Linear(hidden_dim, image_size)
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
+        self.encoder = nn.Linear(np.prod(image_shape), hidden_dim)
+        self.decoder = nn.Linear(hidden_dim, np.prod(image_shape))
 
     def forward(self, x):
+        x = x.view(x.shape[0], -1)
         encoded = F.relu(self.encoder(x))
         decoded = self.decoder(encoded)
+        decoded = decoded.view((x.shape[0],) + self.image_shape)
         return decoded
 
 
 class BEGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
-    def __init__(self, image_size, hidden_dim, z_dim):
+
+    def __init__(self, image_size, z_dim):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.G = Generator(image_size, hidden_dim, z_dim)
-        self.D = Discriminator(image_size, hidden_dim)
-
-        self.shape = int(image_size ** 0.5)
+        self.G = Generator(image_size, z_dim)
+        self.D = Discriminator(image_size)
 
 
 class BEGANTrainer:
@@ -107,7 +117,7 @@ class BEGANTrainer:
         self.num_epochs = 0
 
     def train(self, num_epochs, G_lr=1e-4, D_lr=1e-4, D_steps=1,
-                    GAMMA=0.50, LAMBDA=1e-3, K=0.00):
+              GAMMA=0.50, LAMBDA=1e-3, K=0.00):
         """ Train a Bounded Equilibrium GAN
             Logs progress using G loss, D loss, convergence metric,
             visualizations of Generator output.
@@ -124,16 +134,16 @@ class BEGANTrainer:
 
         # Adam optimizers
         G_optimizer = optim.Adam(params=[p for p in self.model.G.parameters()
-                                        if p.requires_grad], lr=G_lr)
+                                         if p.requires_grad], lr=G_lr)
         D_optimizer = optim.Adam(params=[p for p in self.model.D.parameters()
-                                        if p.requires_grad], lr=D_lr)
+                                         if p.requires_grad], lr=D_lr)
 
         # Reduce learning rate by factor of 2 if convergence_metric stops
         # decreasing by a threshold for last five epochs
         G_scheduler = ReduceLROnPlateau(G_optimizer, factor=0.50, threshold=0.01,
-                                        patience=5*len(self.train_iter))
+                                        patience=5 * len(self.train_iter))
         D_scheduler = ReduceLROnPlateau(D_optimizer, factor=0.50, threshold=0.01,
-                                        patience=5*len(self.train_iter))
+                                        patience=5 * len(self.train_iter))
 
         # Approximate steps/epoch given D_steps per epoch
         # --> roughly train in the same way as if D_step (1) == G_step (1)
@@ -151,7 +161,6 @@ class BEGANTrainer:
 
                 # TRAINING D: Train D for D_steps
                 for _ in range(D_steps):
-
                     # Retrieve batch
                     images = self.process_batch(self.train_iter)
 
@@ -186,8 +195,8 @@ class BEGANTrainer:
 
                 # PROPORTIONAL CONTROL THEORY: Dynamically update K,
                 # log convergence measure
-                convergence = (DX_loss+torch.abs(GAMMA*DX_loss-DG_loss)).item()
-                K_update = (K + LAMBDA*(GAMMA*DX_loss - DG_loss)).item()
+                convergence = (DX_loss + torch.abs(GAMMA * DX_loss - DG_loss)).item()
+                K_update = (K + LAMBDA * (GAMMA * DX_loss - DG_loss)).item()
                 K = min(max(0, K_update), 1)
 
                 # Learning rate scheduler
@@ -199,8 +208,8 @@ class BEGANTrainer:
             self.Dlosses.extend(D_losses)
 
             # Progress logging
-            print ("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f, K: %.4f, Convergence Measure: %.4f"
-                   %(epoch, num_epochs, np.mean(G_losses),
+            print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f, K: %.4f, Convergence Measure: %.4f"
+                  % (epoch, num_epochs, np.mean(G_losses),
                      np.mean(D_losses), K, convergence))
             self.num_epochs += 1
 
@@ -248,9 +257,9 @@ class BEGANTrainer:
 
         # Get noise, classify it using G, then reconstruct the output of G
         # using D (autoencoder).
-        noise = self.compute_noise(images.shape[0], self.model.z_dim) # z
-        G_output = self.model.G(noise) # G(z)
-        DG_reconst = self.model.D(G_output) # D(G(z))
+        noise = self.compute_noise(images.shape[0], self.model.z_dim)  # z
+        G_output = self.model.G(noise)  # G(z)
+        DG_reconst = self.model.D(G_output)  # D(G(z))
 
         # Reconstruct the generation using D
         G_loss = torch.mean(torch.sum(torch.abs(DG_reconst - G_output), dim=1))
@@ -264,7 +273,7 @@ class BEGANTrainer:
     def process_batch(self, iterator):
         """ Generate a process batch to be input into the discriminator D """
         images, _ = next(iter(iterator))
-        images = to_cuda(images.view(images.shape[0], -1))
+        images = to_cuda(images)
         return images
 
     def generate_images(self, epoch, num_outputs=36, save=True):
@@ -281,19 +290,18 @@ class BEGANTrainer:
 
         # Reshape to proper image size
         images = images.view(images.shape[0],
-                             self.model.shape,
-                             self.model.shape,
-                             -1).squeeze()
+                             *self.model.image_shape
+                             ).squeeze()
 
         # Plot
         plt.close()
         grid_size = int(num_outputs**0.5)
         fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
         for i, j in product(range(grid_size), range(grid_size)):
-            ax[i,j].get_xaxis().set_visible(False)
-            ax[i,j].get_yaxis().set_visible(False)
-            ax[i,j].cla()
-            ax[i,j].imshow(images[i+j].data.numpy(), cmap='gray')
+            ax[i, j].get_xaxis().set_visible(False)
+            ax[i, j].get_yaxis().set_visible(False)
+            ax[i, j].cla()
+            ax[i, j].imshow(images[i + j].data.numpy(), cmap='gray')
 
         # Save images if desired
         if save:
@@ -302,14 +310,14 @@ class BEGANTrainer:
                 os.makedirs(outname)
             torchvision.utils.save_image(images.unsqueeze(1).data,
                                          outname + 'reconst_%d.png'
-                                         %(epoch), nrow=grid_size)
+                                         % (epoch), nrow=grid_size)
 
     def viz_loss(self):
         """ Visualize loss for the generator, discriminator """
 
         # Set style, figure size
         plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8,6)
+        plt.rcParams["figure.figsize"] = (8, 6)
 
         # Plot Discriminator loss in red
         plt.plot(np.linspace(1, self.num_epochs, len(self.Dlosses)),
@@ -337,13 +345,11 @@ class BEGANTrainer:
 
 
 if __name__ == '__main__':
-
     # Load in binarized MNIST data, separate into data loaders
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = BEGAN(image_size=784,
-                  hidden_dim=400,
+    model = BEGAN(image_size=(28, 28),
                   z_dim=20)
 
     # Init trainer
