@@ -39,6 +39,7 @@ import numpy as np
 from itertools import product
 from tqdm import tqdm
 
+from src.trainer_base import TrainerBase
 from src.utils import *
 
 
@@ -118,7 +119,7 @@ class InfoGAN(nn.Module):
         self.Q = Q(image_size, disc_dim, cont_dim)
 
 
-class InfoGANTrainer:
+class InfoGANTrainer(TrainerBase):
     """ Object to hold data iterators, train a GAN variant
     """
 
@@ -333,12 +334,6 @@ class InfoGANTrainer:
 
         return to_cuda(torch.cat((z, disc_c, cont_c), dim=1))
 
-    def process_batch(self, iterator):
-        """ Generate a process batch to be input into the discriminator D """
-        images, _ = next(iter(iterator))
-        images = to_cuda(images)
-        return images
-
     def generate_images(self, epoch, num_outputs=36, save=True, c=None):
         """ Visualize progress of generator learning """
         # Turn off any regularization
@@ -374,36 +369,6 @@ class InfoGANTrainer:
             torchvision.utils.save_image(images.unsqueeze(1).data,
                                          outname + 'reconst_%d.png'
                                          % (epoch), nrow=grid_size)
-
-    def viz_loss(self):
-        """ Visualize loss for the generator, discriminator """
-        # Set style, figure size
-        plt.style.use('ggplot')
-        plt.rcParams["figure.figsize"] = (8, 6)
-
-        # Plot Discriminator loss in red
-        plt.plot(np.linspace(1, self.num_epochs, len(self.Dlosses)),
-                 self.Dlosses,
-                 'r')
-
-        # Plot Generator loss in green
-        plt.plot(np.linspace(1, self.num_epochs, len(self.Dlosses)),
-                 self.Glosses,
-                 'g')
-
-        # Add legend, title
-        plt.legend(['Discriminator', 'Generator'])
-        plt.title(self.name)
-        plt.show()
-
-    def save_model(self, savepath):
-        """ Save model state dictionary """
-        torch.save(self.model.state_dict(), savepath)
-
-    def load_model(self, loadpath):
-        """ Load state dictionary into model """
-        state = torch.load(loadpath)
-        self.model.load_state_dict(state)
 
 
 if __name__ == '__main__':
