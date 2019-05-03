@@ -23,17 +23,7 @@ for how to implement Jeffrey, and Table 6 of Appendix C of the paper
 for how to implement Neyman)
 """
 
-import torch, torchvision
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-
-import os
-import matplotlib.pyplot as plt
-import numpy as np
-
-from itertools import product
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -50,6 +40,7 @@ class fGAN(nn.Module):
         self.__dict__.update(locals())
 
         self.G = Generator(image_shape, z_dim)
+
         class fGANDiscriminator(Discriminator):
             """ Discriminator. Input is an image (real or generated), output is P(generated).
             """
@@ -59,6 +50,7 @@ class fGAN(nn.Module):
 
             def forward(self, x):
                 return torch.sigmoid(super().forward(x))
+
         self.D = fGANDiscriminator(image_shape, output_dim)
 
 
@@ -220,7 +212,6 @@ class fGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images):
         """ Run 1 step of training for discriminator

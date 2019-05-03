@@ -60,6 +60,7 @@ class TrainerBase:
             ax[i, j].get_yaxis().set_visible(False)
             ax[i, j].imshow(images[k].data.numpy(), cmap='gray')
             k += 1
+        plt.show()
 
         # Save images if desired
         if save:

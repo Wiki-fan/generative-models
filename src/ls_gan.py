@@ -14,17 +14,7 @@ from the decision boundary. In this way, the generated images are made to appear
 closer to real data. It also stabilizes training.
 """
 
-import torch, torchvision
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-
-import os
-import matplotlib.pyplot as plt
-import numpy as np
-
-from itertools import product
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -149,7 +139,6 @@ class LSGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images, a=0, b=1):
         """ Run 1 step of training for discriminator

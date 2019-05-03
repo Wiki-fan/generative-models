@@ -1,10 +1,9 @@
+import numpy as np
 import torch
 import torch.nn as nn
-
 import torch.nn.functional as F
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-import numpy as np
 
 
 def get_data(BATCH_SIZE=100):

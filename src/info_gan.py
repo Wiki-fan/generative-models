@@ -26,17 +26,12 @@ then passing x to Q(c|x). We then use Q(c|x) to maximize the mutual information
 between c and G(z, c) and backpropagate its estimate back to both G and Q.
 """
 
-import torch, torchvision
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-
 import os
-import matplotlib.pyplot as plt
-import numpy as np
-
 from itertools import product
+
+import matplotlib.pyplot as plt
+import torch.optim as optim
+import torchvision
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -228,7 +223,6 @@ class InfoGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images):
         """ Run 1 step of training for discriminator
@@ -360,6 +354,7 @@ class InfoGANTrainer(TrainerBase):
             ax[i, j].get_yaxis().set_visible(False)
             ax[i, j].imshow(images[k].data.numpy(), cmap='gray')
             k += 1
+        plt.show()
 
         # Save images if desired
         if save:

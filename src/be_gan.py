@@ -28,18 +28,10 @@ a variable kt ∈ [0,1] to control how much emphasis to put on loss(D(G(z)))
 during gradient descent.
 """
 
-import torch, torchvision
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
-import os
-import matplotlib.pyplot as plt
 import numpy as np
-
-from itertools import product
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -217,7 +209,6 @@ class BEGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images, K):
         """ Run 1 step of training for discriminator

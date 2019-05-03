@@ -16,17 +16,7 @@ MM GAN: L(G) =  E[log(1-D(G(z)))]
 In both NS GAN and MM GAN, the output of G can be interpretted as a probability.
 """
 
-import torch, torchvision
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-
-import os
-import matplotlib.pyplot as plt
-import numpy as np
-
-from itertools import product
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -170,7 +160,6 @@ class MMGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images):
         """ Run 1 step of training for discriminator

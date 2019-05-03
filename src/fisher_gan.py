@@ -22,17 +22,7 @@ The main empirical claims are that FisherGAN yields better
 inception scores and has less computational overhead than WGAN.
 """
 
-import torch, torchvision
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-
-import os
-import matplotlib.pyplot as plt
-import numpy as np
-
-from itertools import product
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -170,7 +160,6 @@ class FisherGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.model.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images):
         """ Run 1 step of training for discriminator

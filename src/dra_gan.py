@@ -13,17 +13,7 @@ a real and randomly generated fake sample). For further details, see
 Section 2.5 of the paper.
 """
 
-import torch, torchvision
-import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-
-import os
-import matplotlib.pyplot as plt
-import numpy as np
-
-from itertools import product
 from tqdm import tqdm
 
 from src.trainer_base import TrainerBase
@@ -40,6 +30,7 @@ class DRAGAN(nn.Module):
         self.__dict__.update(locals())
 
         self.G = Generator(image_shape, z_dim)
+
         class DRAGANDiscriminator(Discriminator):
             """ Critic (not trained to classify). Input is an image (real or generated),
                 output is the approximate Wasserstein Distance between z~P(G(z)) and real.
@@ -50,6 +41,7 @@ class DRAGAN(nn.Module):
 
             def forward(self, x):
                 return torch.sigmoid(super().forward(x))
+
         self.D = DRAGANDiscriminator(image_shape, output_dim)
 
 
@@ -148,7 +140,6 @@ class DRAGANTrainer(TrainerBase):
             # Visualize generator progress
             if self.viz:
                 self.generate_images(epoch)
-                plt.show()
 
     def train_D(self, images, LAMBDA=10, K=1, C=1):
         """ Run 1 step of training for discriminator
