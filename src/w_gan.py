@@ -74,7 +74,8 @@ class WGANTrainer(TrainerBase):
         self.viz = viz
         self.num_epochs = 0
 
-    def train(self, num_epochs, G_lr=5e-5, D_lr=5e-5, D_steps=5, clip=0.01):
+    def train(self, num_epochs, G_lr=5e-5, D_lr=5e-5, D_steps=5, clip=0.01,
+              writer=None, plot_to_screen=False, silent=True, sample_interval=1):
         """ Train a Wasserstein GAN
 
             Logs progress using G loss, D loss, G(x), D(G(x)), visualizations
@@ -148,14 +149,20 @@ class WGANTrainer(TrainerBase):
             self.Glosses.extend(G_losses)
             self.Dlosses.extend(D_losses)
 
-            # Progress logging
-            print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
-                  % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
+            if not silent:
+                # Progress logging
+                print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
+                      % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
+
+            if writer is not None:
+                writer.add_scalar('G_loss', np.mean(G_losses), epoch)
+                writer.add_scalar('D_loss', np.mean(D_losses), epoch)
+
             self.num_epochs += 1
 
-            # Visualize generator progress
-            if self.viz:
-                self.generate_images(epoch)
+            if epoch % sample_interval == 0:
+                # Visualize generator progress
+                self.generate_images(epoch, writer=writer, show=plot_to_screen)
 
     def train_D(self, images):
         """ Run 1 step of training for discriminator

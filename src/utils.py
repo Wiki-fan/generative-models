@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -12,6 +14,14 @@ def to_cuda(x):
     if torch.cuda.is_available():
         x = x.cuda()
     return x
+
+
+def fig2rgba():
+    fig = plt.gcf()
+    fig.canvas.draw()
+    w, h = fig.canvas.get_width_height()
+    buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).reshape((h, w, 4))
+    return buf
 
 
 class GAN(nn.Module):

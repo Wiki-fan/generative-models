@@ -49,7 +49,7 @@ class DRAGANTrainer(TrainerBase):
     """ Object to hold data iterators, train a GAN variant
     """
 
-    def __init__(self, model, train_iter, val_iter, test_iter, viz=False):
+    def __init__(self, model, train_iter, val_iter, test_iter):
         self.model = to_cuda(model)
         self.name = model.__class__.__name__
 
@@ -60,10 +60,10 @@ class DRAGANTrainer(TrainerBase):
         self.Glosses = []
         self.Dlosses = []
 
-        self.viz = viz
         self.num_epochs = 0
 
-    def train(self, num_epochs, G_lr=1e-4, D_lr=1e-4, D_steps=5):
+    def train(self, num_epochs, G_lr=1e-4, D_lr=1e-4, D_steps=5,
+              writer=None, plot_to_screen=False, silent=True, sample_interval=1):
         """ Train a Deep Regret Analytic GAN
 
             Logs progress using G loss, D loss, G(x), D(G(x)),
@@ -132,14 +132,20 @@ class DRAGANTrainer(TrainerBase):
             self.Glosses.extend(G_losses)
             self.Dlosses.extend(D_losses)
 
-            # Progress logging
-            print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
-                  % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
+            if not silent:
+                # Progress logging
+                print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
+                      % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
+
+            if writer is not None:
+                writer.add_scalar('G_loss', np.mean(G_losses), epoch)
+                writer.add_scalar('D_loss', np.mean(D_losses), epoch)
+
             self.num_epochs += 1
 
-            # Visualize generator progress
-            if self.viz:
-                self.generate_images(epoch)
+            if epoch % sample_interval == 0:
+                # Visualize generator progress
+                self.generate_images(epoch, writer=writer, show=plot_to_screen)
 
     def train_D(self, images, LAMBDA=10, K=1, C=1):
         """ Run 1 step of training for discriminator
@@ -229,8 +235,7 @@ if __name__ == "__main__":
     trainer = DRAGANTrainer(model=model,
                             train_iter=train_iter,
                             val_iter=val_iter,
-                            test_iter=test_iter,
-                            viz=False)
+                            test_iter=test_iter)
 
     # Train
     trainer.train(num_epochs=65,

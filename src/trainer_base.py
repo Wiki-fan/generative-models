@@ -35,7 +35,7 @@ class TrainerBase:
         state = torch.load(loadpath)
         self.model.load_state_dict(state)
 
-    def generate_images(self, epoch, num_outputs=36, save=True):
+    def generate_images(self, epoch, num_outputs=36, save=True, show=True, writer=None):
         """ Visualize progress of generator learning """
         # Turn off any regularization
         self.model.eval()
@@ -60,7 +60,14 @@ class TrainerBase:
             ax[i, j].get_yaxis().set_visible(False)
             ax[i, j].imshow(images[k].data.numpy(), cmap='gray')
             k += 1
-        plt.show()
+
+        if writer is not None:
+            writer.add_image('generated', fig2rgba(), dataformats='HWC', global_step=epoch)
+
+        if show:
+            plt.show()
+        else:
+            plt.close()
 
         # Save images if desired
         if save:
