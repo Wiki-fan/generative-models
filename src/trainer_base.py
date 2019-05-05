@@ -14,17 +14,10 @@ from tqdm import tqdm
 from src.utils import *
 
 
-class TrainerBase:
-
+class Base:
     def compute_noise(self, batch_size, z_dim):
         """ Compute random noise for input into the Generator G """
         return to_cuda(torch.randn(batch_size, z_dim))
-
-    def process_batch(self, iterator):
-        """ Generate a process batch to be input into the Discriminator D """
-        images, _ = next(iter(iterator))
-        images = to_cuda(images)
-        return images
 
     def save_model(self, savepath):
         """ Save model state dictionary """
@@ -34,6 +27,14 @@ class TrainerBase:
         """ Load state dictionary into model """
         state = torch.load(loadpath)
         self.model.load_state_dict(state)
+
+
+class TrainerBase(Base):
+    def process_batch(self, iterator):
+        """ Generate a process batch to be input into the Discriminator D """
+        images, _ = next(iter(iterator))
+        images = to_cuda(images)
+        return images
 
     def generate_images(self, epoch, num_outputs=36, save=True, show=True, writer=None):
         """ Visualize progress of generator learning """
@@ -101,3 +102,5 @@ class TrainerBase:
         plt.show()
 
 
+class AutoencoderBase(Base):
+    pass
