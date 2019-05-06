@@ -133,7 +133,7 @@ class fGANTrainer(TrainerBase):
         self.num_epochs = 0
 
     def train(self, num_epochs, method, G_lr=1e-4, D_lr=1e-4, D_steps=1,
-              writer=None, plot_to_screen=False, silent=True, sample_interval=1):
+              writer=None, plot_to_screen=True, silent=False, with_progressbar=False, sample_interval=1):
         """ Train a standard vanilla GAN architecture using f-divergence as loss
 
             Logs progress using G loss, D loss, G(x), D(G(x)), visualizations
@@ -160,64 +160,65 @@ class fGANTrainer(TrainerBase):
         epoch_steps = int(np.ceil(len(self.train_iter) / (D_steps)))
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs + 1)):
+        with tqdm(range(1, num_epochs + 1), disable=not with_progressbar) as t:
+            for epoch in t:
 
-            self.model.train()
-            G_losses, D_losses = [], []
+                self.model.train()
+                G_losses, D_losses = [], []
 
-            for _ in range(epoch_steps):
+                for _ in range(epoch_steps):
 
-                D_step_loss = []
+                    D_step_loss = []
 
-                for _ in range(D_steps):
-                    # Reshape images
-                    images = self.process_batch(self.train_iter)
+                    for _ in range(D_steps):
+                        # Reshape images
+                        images = self.process_batch(self.train_iter)
 
-                    # TRAINING D: Zero out gradients for D
-                    D_optimizer.zero_grad()
+                        # TRAINING D: Zero out gradients for D
+                        D_optimizer.zero_grad()
 
-                    # Train D to discriminate between real and generated images
-                    D_loss = self.train_D(images)
+                        # Train D to discriminate between real and generated images
+                        D_loss = self.train_D(images)
 
-                    # Update parameters
-                    D_loss.backward()
-                    D_optimizer.step()
+                        # Update parameters
+                        D_loss.backward()
+                        D_optimizer.step()
 
-                    # Log results, backpropagate the discriminator network
-                    D_step_loss.append(D_loss.item())
+                        # Log results, backpropagate the discriminator network
+                        D_step_loss.append(D_loss.item())
 
-                # So that G_loss and D_loss have the same number of entries.
-                D_losses.append(np.mean(D_step_loss))
+                    # So that G_loss and D_loss have the same number of entries.
+                    D_losses.append(np.mean(D_step_loss))
 
-                # TRAINING G: Zero out gradients for G
-                G_optimizer.zero_grad()
+                    # TRAINING G: Zero out gradients for G
+                    G_optimizer.zero_grad()
 
-                # Train G to generate images that fool the discriminator
-                G_loss = self.train_G(images)
+                    # Train G to generate images that fool the discriminator
+                    G_loss = self.train_G(images)
 
-                # Log results, update parameters
-                G_losses.append(G_loss.item())
-                G_loss.backward()
-                G_optimizer.step()
+                    # Log results, update parameters
+                    G_losses.append(G_loss.item())
+                    G_loss.backward()
+                    G_optimizer.step()
 
-            # Save progress
-            self.Glosses.extend(G_losses)
-            self.Dlosses.extend(D_losses)
+                # Save progress
+                self.Glosses.extend(G_losses)
+                self.Dlosses.extend(D_losses)
 
-            if not silent:
-                # Progress logging
-                print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
-                      % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
+                if not silent:
+                    # Progress logging
+                    print("Epoch[%d/%d], G Loss: %.4f, D Loss: %.4f"
+                          % (epoch, num_epochs, np.mean(G_losses), np.mean(D_losses)))
 
-            if writer is not None:
-                writer.add_scalar('G_loss', np.mean(G_losses), epoch)
-                writer.add_scalar('D_loss', np.mean(D_losses), epoch)
+                if writer is not None:
+                    writer.add_scalar('G_loss', np.mean(G_losses), epoch)
+                    writer.add_scalar('D_loss', np.mean(D_losses), epoch)
 
-            self.num_epochs += 1
+                self.num_epochs += 1
 
-            if epoch % sample_interval == 0:
-                # Visualize generator progress
-                self.generate_images(epoch, writer=writer, show=plot_to_screen)
+                if epoch % sample_interval == 0:
+                    # Visualize generator progress
+                    self.generate_images(epoch, writer=writer, show=plot_to_screen)
 
     def train_D(self, images):
         """ Run 1 step of training for discriminator

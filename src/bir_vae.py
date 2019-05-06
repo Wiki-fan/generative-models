@@ -31,6 +31,7 @@ from copy import deepcopy
 from tqdm import tqdm
 from itertools import product
 
+from src.trainer_base import AutoencoderBase
 from src.utils import *
 
 
@@ -39,13 +40,17 @@ class Encoder(nn.Module):
     the latent representation z pre-reparametrization
     """
 
-    def __init__(self, image_size, hidden_dim, z_dim):
+    def __init__(self, image_shape, z_dim):
         super().__init__()
 
-        self.linear = nn.Linear(image_size, hidden_dim)
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
+        self.linear = nn.Linear(image_shape, hidden_dim)
         self.mu = nn.Linear(hidden_dim, z_dim)
 
     def forward(self, x):
+        x = x.view(x.shape[0], -1)
         activated = F.relu(self.linear(x))
         mu = self.mu(activated)
         return mu
@@ -56,15 +61,19 @@ class Decoder(nn.Module):
     output is reconstructed image
     """
 
-    def __init__(self, z_dim, hidden_dim, image_size):
+    def __init__(self, z_dim, image_shape):
         super().__init__()
 
+        self.__dict__.update(locals())
+
+        hidden_dim = 400
         self.linear = nn.Linear(z_dim, hidden_dim)
-        self.recon = nn.Linear(hidden_dim, image_size)
+        self.recon = nn.Linear(hidden_dim, image_shape)
 
     def forward(self, z):
         activated = F.relu(self.linear(z))
         reconstructed = torch.sigmoid(self.recon(activated))
+        reconstructed = reconstructed.view((reconstructed.shape[0],) + self.image_shape)
         return reconstructed
 
 
@@ -73,15 +82,14 @@ class BIRVAE(nn.Module):
     method. Parameter I indicates how many 'bits' should be let through.
     """
 
-    def __init__(self, image_size=784, hidden_dim=400, z_dim=20, I=13.3):
+    def __init__(self, image_shape, z_dim=20, I=13.3):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.encoder = Encoder(image_size=image_size, hidden_dim=hidden_dim, z_dim=z_dim)
-        self.decoder = Decoder(z_dim=z_dim, hidden_dim=hidden_dim, image_size=image_size)
+        self.encoder = Encoder(image_shape=image_shape, z_dim=z_dim)
+        self.decoder = Decoder(z_dim=z_dim, image_shape=image_shape)
 
-        self.shape = int(image_size**0.5)
         self.set_var = 1 / (4**(I / z_dim))
 
     def forward(self, x):
@@ -99,8 +107,8 @@ class BIRVAE(nn.Module):
         return z
 
 
-class BIRVAETrainer:
-    def __init__(self, model, train_iter, val_iter, test_iter, viz=False):
+class BIRVAETrainer(AutoencoderBase):
+    def __init__(self, model, train_iter, val_iter, test_iter):
         """ Object to hold data iterators, train the model """
         self.model = to_cuda(model)
         self.name = model.__class__.__name__
@@ -111,13 +119,13 @@ class BIRVAETrainer:
 
         self.best_val_loss = 1e10
         self.debugging_image, _ = next(iter(test_iter))
-        self.viz = viz
 
         self.mmd_loss = []
         self.recon_loss = []
         self.num_epochs = 0
 
-    def train(self, num_epochs, lr=1e-3, weight_decay=1e-5):
+    def train(self, num_epochs, lr=1e-3, weight_decay=1e-5,
+              writer=None, plot_to_screen=True, silent=False, with_progressbar=False, sample_interval=1):
         """ Train a Variational Autoencoder
 
             Logs progress using total loss, reconstruction loss, maximum mean
@@ -170,14 +178,24 @@ class BIRVAETrainer:
                 self.best_model = deepcopy(self.model)
                 self.best_val_loss = val_loss
 
-            # Progress logging
-            print("Epoch[%d/%d], Total Loss: %.4f, MSE Loss: %.4f, MMD Loss: %.4f, Val Loss: %.4f"
-                  % (epoch, num_epochs, np.mean(epoch_loss), np.mean(epoch_recon), np.mean(epoch_mmd), val_loss))
+            if not silent:
+                # Progress logging
+                print("Epoch[%d/%d], Total Loss: %.4f, MSE Loss: %.4f, MMD Loss: %.4f, Val Loss: %.4f"
+                      % (epoch, num_epochs, np.mean(epoch_loss), np.mean(epoch_recon), np.mean(epoch_mmd), val_loss))
 
-            # Debugging and visualization purposes
-            if self.viz:
-                self.sample_images(epoch)
-                plt.show()
+            if writer is not None:
+                writer.add_scalar('Total Loss', np.mean(epoch_loss), epoch)
+                writer.add_scalar('MSE Loss', np.mean(epoch_recon), epoch)
+                writer.add_scalar('MMD Loss', np.mean(epoch_mmd), epoch)
+                writer.add_scalar('Val Loss', val_loss, epoch)
+
+            self.num_epochs += 1
+
+            if epoch % sample_interval == 0:
+                # Visualize autoencoder progress
+                self.reconstruct_images(self.debugging_image, epoch, writer=writer, show=plot_to_screen)
+                # Visualize generator progress
+                self.sample_images(epoch, writer=writer, show=plot_to_screen)
 
     def compute_batch(self, batch, LAMBDA=1000.):
         """ Compute loss for a batch of examples
@@ -312,12 +330,12 @@ class BIRVAETrainer:
         """
         # Initialize and train a VAE with size two dimension latent space
         train_iter, val_iter, test_iter = get_data()
-        latent_model = BIRVAE(image_size=784, hidden_dim=400, z_dim=2, I=13.3)
+        latent_model = BIRVAE(image_shape=784, z_dim=2, I=13.3)
         latent_space = BIRVAETrainer(latent_model, train_iter, val_iter, test_iter)
         latent_space.train(num_epochs)
         latent_model = latent_space.best_model
 
-        # Across batches in train iter, collect variationa means
+        # Across batches in train iter, collect variational means
         data = []
         for batch in train_iter:
             images, labels = batch
@@ -380,15 +398,6 @@ class BIRVAETrainer:
         plt.title(self.name)
         plt.show()
 
-    def save_model(self, savepath):
-        """ Save model state dictionary """
-        torch.save(self.model.state_dict(), savepath)
-
-    def load_model(self, loadpath):
-        """ Load state dictionary into model """
-        state = torch.load(loadpath)
-        self.model.load_state_dict(state)
-
 
 if __name__ == "__main__":
     from src.mnist_utils import *
@@ -397,8 +406,7 @@ if __name__ == "__main__":
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = BIRVAE(image_size=784,
-                   hidden_dim=400,
+    model = BIRVAE(image_shape=(1, 28, 28),
                    z_dim=20,
                    I=13.3)
 
@@ -406,8 +414,7 @@ if __name__ == "__main__":
     trainer = BIRVAETrainer(model=model,
                             train_iter=train_iter,
                             val_iter=val_iter,
-                            test_iter=test_iter,
-                            viz=False)
+                            test_iter=test_iter)
 
     # Train
     trainer.train(num_epochs=10,

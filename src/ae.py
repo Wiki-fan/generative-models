@@ -93,7 +93,7 @@ class AutoencoderTrainer:
         self.num_epochs = 0
 
     def train(self, num_epochs, lr=1e-3, weight_decay=1e-5,
-              writer=None, plot_to_screen=False, silent=True, sample_interval=1):
+              writer=None, plot_to_screen=True, silent=False, with_progressbar=False, sample_interval=1):
         """ Train an Autoencoder
             Logs progress using total loss, reconstruction loss, kl_divergence,
             and validation loss
