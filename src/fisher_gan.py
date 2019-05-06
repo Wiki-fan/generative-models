@@ -48,7 +48,7 @@ class FisherGAN(nn.Module):
                 super().__init__(image_shape, output_dim)
 
             def forward(self, x):
-                return torch.sigmoid(super().forward(x))
+                return super().forward(x)
 
         self.D = FisherGANDiscriminator(image_shape, output_dim)
 
@@ -178,9 +178,6 @@ class FisherGANTrainer(TrainerBase):
         Output:
             D_loss: FisherGAN IPM loss (Equation 9 of paper)
         """
-        # Generate labels (ones indicate real images, zeros indicate generated)
-        X_labels = to_cuda(torch.ones(images.shape[0], 1))
-        G_labels = to_cuda(torch.zeros(images.shape[0], 1))
 
         # Classify the real batch images, get the loss for these
         DX_score = self.model.D(images)
@@ -198,13 +195,14 @@ class FisherGANTrainer(TrainerBase):
         OMEGA = 1 - (0.5 * DX_moment_2 + 0.5 * DG_moment_2)
 
         # Compute loss (Eqn. 9)
-        D_loss = -((DX_moment_1 - DG_moment_1) \
-                   + self.LAMBDA * OMEGA \
+        D_loss = -((DX_moment_1 - DG_moment_1)
+                   + self.LAMBDA * OMEGA
                    - (self.RHO / 2) * (OMEGA**2))
 
         # For progress logging
-        IPM_ratio = DX_moment_1.item() - DG_moment_1.item() \
-                    / 0.5 * (DX_moment_2.item() - DG_moment_2.item())**0.5
+        IPM_enum = (DX_moment_1.item() - DG_moment_1.item())
+        IPM_denom = (0.5 * DX_moment_2.item() + 0.5 * DG_moment_2.item())**0.5
+        IPM_ratio = IPM_enum / IPM_denom
 
         return D_loss, IPM_ratio
 
