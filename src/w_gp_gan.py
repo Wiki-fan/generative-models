@@ -26,14 +26,14 @@ class WGPGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
 
-    def __init__(self, Generator, Discriminator, image_size, z_dim, output_dim=1):
+    def __init__(self, Generator, Discriminator, image_shape, z_dim, output_dim=1):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.G = Generator(image_size, z_dim)
+        self.G = Generator(image_shape, z_dim)
 
-        class WGPGANDiscriminator(Discriminator):
+        class WGPGANCritic(Discriminator):
             """ Critic (not trained to classify). Input is an image (real or generated),
                 output is the approximate Wasserstein Distance between z~P(G(z)) and real.
             """
@@ -42,9 +42,9 @@ class WGPGAN(nn.Module):
                 super().__init__(image_shape, output_dim)
 
             def forward(self, x):
-                return torch.sigmoid(super().forward(x))
+                return super().forward(x)
 
-        self.D = WGPGANDiscriminator(image_size, output_dim)
+        self.D = WGPGANCritic(image_shape, output_dim)
 
 
 class WGPGANTrainer(TrainerBase):
@@ -171,10 +171,13 @@ class WGPGANTrainer(TrainerBase):
 
         # GRADIENT PENALTY:
         # Uniformly sample along one straight line per each batch entry.
-        epsilon = to_var(torch.rand(images.shape[0], 1).unsqueeze(-1).unsqueeze(-1).expand(images.size()))
+        epsilon = to_var(torch.rand(images.shape[0], 1)) \
+            .expand(-1, np.prod(self.model.image_shape)) \
+            .view((images.shape[0],) + self.model.image_shape)
+
         # Generate images from the noise, ensure unit gradient norm 1
         # See Section 4 and Algorithm 1 of original paper for full explanation.
-        G_interpolation = epsilon * images + (1 - epsilon) * G_output.view(images.shape)  # TODO: no view
+        G_interpolation = epsilon * images + (1 - epsilon) * G_output
         D_interpolation = self.model.D(G_interpolation)
 
         # Compute the gradients of D with respect to the noise generated input
@@ -188,7 +191,7 @@ class WGPGANTrainer(TrainerBase):
                                         retain_graph=True)[0]
 
         # Full gradient penalty
-        grad_penalty = LAMBDA * torch.mean((gradients.norm(2, dim=1) - 1)**2)
+        grad_penalty = LAMBDA * torch.mean((gradients.view(gradients.shape[0], -1).norm(2, dim=1) - 1)**2)
 
         # Compute WGAN-GP loss for D
         D_loss = torch.mean(DG_score) - torch.mean(DX_score) + grad_penalty
@@ -222,7 +225,7 @@ if __name__ == "__main__":
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = WGPGAN(Generator, Discriminator, image_size=(28, 28),
+    model = WGPGAN(Generator, Discriminator, image_shape=(1, 28, 28),
                    z_dim=20)
 
     # Init trainer
