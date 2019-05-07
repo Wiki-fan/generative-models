@@ -42,7 +42,7 @@ class WGAN(nn.Module):
 
         self.G = Generator(image_shape, z_dim)
 
-        class WGANDiscriminator(Discriminator):
+        class WGANCritic(Discriminator):
             """ Critic (not trained to classify). Input is an image (real or generated),
                 output is the approximate Wasserstein Distance between z~P(G(z)) and real.
             """
@@ -51,9 +51,9 @@ class WGAN(nn.Module):
                 super().__init__(image_shape, output_dim)
 
             def forward(self, x):
-                return torch.sigmoid(super().forward(x))
+                return super().forward(x)
 
-        self.D = WGANDiscriminator(image_shape, output_dim)
+        self.D = WGANCritic(image_shape, output_dim)
 
 
 class WGANTrainer(TrainerBase):
