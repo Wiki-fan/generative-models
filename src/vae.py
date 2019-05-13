@@ -25,21 +25,10 @@ than one population of crabs studied. This would've been a latent variable,
 since the data collector did not initially know or perhaps even suspect this.
 """
 
-import torch, torchvision
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-from torchvision.transforms import ToPILImage
-from torchvision.utils import make_grid
-
-import os
-import numpy as np
-import matplotlib.pyplot as plt
 from copy import deepcopy
 
+import torch.optim as optim
 from tqdm import tqdm
-from itertools import product
 
 from src.trainer_base import AutoencoderBase
 from src.utils import *
@@ -93,7 +82,7 @@ class VAE(nn.Module):
     method for latent variable z
     """
 
-    def __init__(self, image_shape, z_dim):
+    def __init__(self, Encoder, Decoder, image_shape, z_dim):
         super().__init__()
 
         self.__dict__.update(locals())
@@ -153,7 +142,7 @@ class VAETrainer(AutoencoderBase):
                                weight_decay=weight_decay)
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs + 1)):
+        for epoch in tqdm(range(1, num_epochs + 1), disable=not with_progressbar):
 
             self.model.train()
             epoch_loss, epoch_recon, epoch_kl = [], [], []
@@ -242,110 +231,17 @@ class VAETrainer(AutoencoderBase):
         loss = np.mean(loss)
         return loss
 
-    def reconstruct_images(self, images, epoch, save=True, show=True, writer=None):
-        """ Sample images from latent space at each epoch """
+    def reconstruct(self, images):
+        return self.model(to_cuda(images))[0]
 
-        # Reshape images, pass through model, reshape reconstructed output
-        batch = to_cuda(images)
-        reconst_images, _, _ = self.model(batch)
-        reconst_images = reconst_images.view(images.shape).squeeze()
-
-        # Plot
-        plt.close()
-        grid_size, k = int(reconst_images.shape[0]**0.5), 0
-        fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
-        for i, j in product(range(grid_size), range(grid_size)):
-            ax[i, j].get_xaxis().set_visible(False)
-            ax[i, j].get_yaxis().set_visible(False)
-            ax[i, j].imshow(reconst_images[k].data.numpy(), cmap='gray')
-            k += 1
-
-        image_grid = make_grid(reconst_images.data.view(*images.shape))
-
-        if writer is not None:
-            writer.add_image('reconstructed', fig2rgba(), dataformats='HWC', global_step=epoch)
-            # writer.add_image('reconstructed', image_grid, global_step=epoch)
-
-        if show:
-            plt.show()
-        else:
-            plt.close()
-
-        # Save
-        if save:
-            outname = '../viz/' + self.name + '/'
-            if not os.path.exists(outname):
-                os.makedirs(outname)
-            torchvision.utils.save_image(images.data,
-                                         outname + 'real.png',
-                                         nrow=grid_size)
-            torchvision.utils.save_image(reconst_images.unsqueeze(1).data,
-                                         outname + 'reconst_%d.png' % (epoch),
-                                         nrow=grid_size)
-
-    def sample_images(self, epoch, num_images=36, save=True, writer=None, show=False):
-        """ Viz method 1: generate images by sampling z ~ p(z), x ~ p(x|z,θ) """
-
-        # Sample z
-        z = self.compute_noise(num_images, self.model.z_dim)
-
-        # Pass into decoder
-        sample = self.model.decoder(z)
-
-        # Plot
-        image_grid = make_grid(sample.data.view(num_images,
-                                                *self.model.image_shape),
-                               nrow=int(num_images**0.5))
-        img = ToPILImage()(image_grid)
-        plt.imshow(img)
-
-        if writer is not None:
-            # writer.add_image('generated', fig2rgba(), global_step=epoch)
-            writer.add_image('generated', image_grid, global_step=epoch)
-
-        if show:
-            plt.show()
-        else:
-            plt.close()
-
-        # Save
-        if save:
-            outname = '../viz/' + self.name + '/'
-            if not os.path.exists(outname):
-                os.makedirs(outname)
-            img.save(outname + 'sample_%d.png' % (epoch))
-
-    def sample_interpolated_images(self, n=9):
-        """ Viz method 2: sample two random latent vectors from p(z),
-        then sample from their interpolated values
-        """
-
-        # Sample latent vectors
-        z1 = self.compute_noise(1, self.model.z_dim)
-        z2 = self.compute_noise(1, self.model.z_dim)
-
-        # Interpolate within latent vectors
-        samples = []
-        for alpha in np.linspace(0, 1, n):
-            z = to_cuda(alpha * z1 + (1 - alpha) * z2)
-            sample = self.model.decoder(z)[0]
-            samples.append(sample)
-
-        samples_tensor = torch.stack(samples)
-
-        image_grid = make_grid(samples_tensor.data.view(n, *self.model.image_shape), nrow=int(n**0.5))
-        plt.imshow(ToPILImage()(image_grid))
-
-        plt.show()
-
-    def explore_latent_space(self, num_epochs=3):
+    def explore_latent_space(self, VAE, num_epochs=3):
         """ Viz method 3: train a VAE with 2 latent variables,
         compare variational means
         """
 
         # Initialize and train a VAE with size two dimension latent space
         train_iter, val_iter, test_iter = get_data()
-        latent_model = VAE(image_shape=self.model.image_shape, z_dim=2)
+        latent_model = VAE(Encoder, Decoder, image_shape=self.model.image_shape, z_dim=2)
         latent_space = VAETrainer(latent_model, train_iter, val_iter, test_iter)
         latent_space.train(num_epochs)
         latent_model = latent_space.best_model
@@ -360,24 +256,7 @@ class VAETrainer(AutoencoderBase):
             for label, (m1, m2) in zip(labels, mu):
                 data.append((label.item(), m1.item(), m2.item()))
 
-        # Plot
-        labels, m1s, m2s = zip(*data)
-        plt.figure(figsize=(10, 10))
-        plt.scatter(m1s, m2s, c=labels)
-        plt.legend([str(i) for i in set(labels)])
-        plt.show()
-
-        # Evenly sample across latent space, visualize the outputs
-        mu = torch.stack([torch.FloatTensor([m1, m2])
-                          for m1 in np.linspace(-2, 2, 10)
-                          for m2 in np.linspace(-2, 2, 10)])
-        samples = latent_model.decoder(to_cuda(mu))
-        image_grid = make_grid(samples.data.view(mu.shape[0],
-                                                 *self.model.image_shape
-                                                 ), nrow=10)
-        plt.imshow(ToPILImage()(image_grid))
-
-        plt.show()
+        self.plot_latent_space(latent_model, data)
 
         return latent_model
 
@@ -420,7 +299,8 @@ if __name__ == "__main__":
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = VAE(image_shape=(1, 28, 28),
+    model = VAE(Encoder, Decoder,
+                image_shape=(1, 28, 28),
                 z_dim=20)
 
     # Init trainer
@@ -436,5 +316,5 @@ if __name__ == "__main__":
                   plot_to_screen=True,
                   silent=False)
 
-    trainer.explore_latent_space()
+    trainer.explore_latent_space(VAE)
     trainer.sample_interpolated_images()

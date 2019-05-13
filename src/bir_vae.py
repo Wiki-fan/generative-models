@@ -15,21 +15,10 @@ Gaussian with variance 1, so the log likelihood reduced to the negative
 mean square error (i.e. we use MSELoss instead of NLLLoss).
 """
 
-import torch, torchvision
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.autograd import Variable
-from torchvision.transforms import ToPILImage
-from torchvision.utils import make_grid
-
-import os
-import numpy as np
-import matplotlib.pyplot as plt
 from copy import deepcopy
 
+import torch.optim as optim
 from tqdm import tqdm
-from itertools import product
 
 from src.trainer_base import AutoencoderBase
 from src.utils import *
@@ -46,7 +35,7 @@ class Encoder(nn.Module):
         self.__dict__.update(locals())
 
         hidden_dim = 400
-        self.linear = nn.Linear(image_shape, hidden_dim)
+        self.linear = nn.Linear(np.prod(image_shape), hidden_dim)
         self.mu = nn.Linear(hidden_dim, z_dim)
 
     def forward(self, x):
@@ -68,7 +57,7 @@ class Decoder(nn.Module):
 
         hidden_dim = 400
         self.linear = nn.Linear(z_dim, hidden_dim)
-        self.recon = nn.Linear(hidden_dim, image_shape)
+        self.recon = nn.Linear(hidden_dim, np.prod(image_shape))
 
     def forward(self, z):
         activated = F.relu(self.linear(z))
@@ -82,7 +71,7 @@ class BIRVAE(nn.Module):
     method. Parameter I indicates how many 'bits' should be let through.
     """
 
-    def __init__(self, image_shape, z_dim=20, I=13.3):
+    def __init__(self, Encoder, Decoder, image_shape, z_dim=20, I=13.3):
         super().__init__()
 
         self.__dict__.update(locals())
@@ -143,7 +132,7 @@ class BIRVAETrainer(AutoencoderBase):
                                weight_decay=weight_decay)
 
         # Begin training
-        for epoch in tqdm(range(1, num_epochs + 1)):
+        for epoch in tqdm(range(1, num_epochs + 1), disable=not with_progressbar):
 
             self.model.train()
             epoch_loss, epoch_recon, epoch_mmd = [], [], []
@@ -205,7 +194,7 @@ class BIRVAETrainer(AutoencoderBase):
 
         # Reshape images
         images, _ = batch
-        images = to_cuda(images.view(images.shape[0], -1))
+        images = to_cuda(images)
 
         # Get output images, mean, std of encoded space
         outputs, z = self.model(images)
@@ -251,86 +240,17 @@ class BIRVAETrainer(AutoencoderBase):
         loss = np.mean(loss)
         return loss
 
-    def reconstruct_images(self, images, epoch, save=True):
-        """ Reconstruct a fixed input at each epoch for progress
-        visualization
-        """
-        # Reshape images, pass through model, reshape reconstructed output
-        batch = to_cuda(images.view(images.shape[0], -1))
-        reconst_images, _ = self.model(batch)
-        reconst_images = reconst_images.view(images.shape).squeeze()
+    def reconstruct(self, images):
+        return self.model(to_cuda(images))[0]
 
-        # Plot
-        plt.close()
-        grid_size, k = int(reconst_images.shape[0]**0.5), 0
-        fig, ax = plt.subplots(grid_size, grid_size, figsize=(5, 5))
-        for i, j in product(range(grid_size), range(grid_size)):
-            ax[i, j].get_xaxis().set_visible(False)
-            ax[i, j].get_yaxis().set_visible(False)
-            ax[i, j].imshow(reconst_images[k].data.numpy(), cmap='gray')
-            k += 1
-
-        # Save
-        if save:
-            outname = '../viz/' + self.name + '/'
-            if not os.path.exists(outname):
-                os.makedirs(outname)
-            torchvision.utils.save_image(images.data,
-                                         outname + 'real.png',
-                                         nrow=grid_size)
-            torchvision.utils.save_image(reconst_images.unsqueeze(1).data,
-                                         outname + 'reconst_%d.png' % (epoch),
-                                         nrow=grid_size)
-
-    def sample_images(self, epoch=-100, num_images=36, save=True):
-        """ Viz method 1: generate images by sampling z ~ p(z), x ~ p(x|z,θ) """
-
-        # Sample z
-        z = to_cuda(torch.randn(num_images, self.model.z_dim))
-
-        # Pass into decoder
-        sample = self.model.decoder(z)
-
-        # Plot
-        to_img = ToPILImage()
-        img = to_img(make_grid(sample.data.view(num_images,
-                                                -1,
-                                                self.model.shape,
-                                                self.model.shape),
-                               nrow=int(num_images**0.5)))
-        display(img)
-
-        # Save
-        if save:
-            outname = '../viz/' + self.name + '/'
-            if not os.path.exists(outname):
-                os.makedirs(outname)
-            img.save(outname + 'sample_%d.png' % (epoch))
-
-    def sample_interpolated_images(self):
-        """ Viz method 2: sample two random latent vectors from p(z),
-        then sample from their interpolated values """
-
-        # Sample latent vectors
-        z1 = torch.normal(torch.zeros(self.model.z_dim), 1)
-        z2 = torch.normal(torch.zeros(self.model.z_dim), 1)
-        to_img = ToPILImage()
-
-        # Interpolate within latent vectors
-        for alpha in np.linspace(0, 1, self.model.z_dim):
-            z = to_cuda(alpha * z1 + (1 - alpha) * z2)
-            sample = self.model.decoder(z)
-            display(to_img(make_grid(sample.data.view(-1,
-                                                      self.model.shape,
-                                                      self.model.shape))))
-
-    def explore_latent_space(self, num_epochs=3):
+    def explore_latent_space(self, BIRVAE, num_epochs=3):
         """ Viz method 3: train a VAE with 2 latent variables,
         compare variational means
         """
+
         # Initialize and train a VAE with size two dimension latent space
         train_iter, val_iter, test_iter = get_data()
-        latent_model = BIRVAE(image_shape=784, z_dim=2, I=13.3)
+        latent_model = BIRVAE(Encoder, Decoder, image_shape=self.model.image_shape, z_dim=2, I=13.3)
         latent_space = BIRVAETrainer(latent_model, train_iter, val_iter, test_iter)
         latent_space.train(num_epochs)
         latent_model = latent_space.best_model
@@ -339,29 +259,13 @@ class BIRVAETrainer(AutoencoderBase):
         data = []
         for batch in train_iter:
             images, labels = batch
-            images = to_cuda(images.view(images.shape[0], -1))
+            images = to_cuda(images)
             mu = latent_model.encoder(images)
 
             for label, (m1, m2) in zip(labels, mu):
                 data.append((label.item(), m1.item(), m2.item()))
 
-        # Plot
-        labels, m1s, m2s = zip(*data)
-        plt.figure(figsize=(10, 10))
-        plt.scatter(m1s, m2s, c=labels)
-        plt.legend([str(i) for i in set(labels)])
-
-        # Evenly sample across latent space, visualize the outputs
-        mu = torch.stack([torch.FloatTensor([m1, m2])
-                          for m1 in np.linspace(-2, 2, 10)
-                          for m2 in np.linspace(-2, 2, 10)])
-        samples = latent_model.decoder(to_cuda(mu))
-        to_img = ToPILImage()
-        display(to_img(make_grid(samples.data.view(mu.shape[0],
-                                                   -1,
-                                                   latent_model.shape,
-                                                   latent_model.shape),
-                                 nrow=10)))
+        self.plot_latent_space(latent_model, data)
 
         return latent_model
 
@@ -406,7 +310,8 @@ if __name__ == "__main__":
     train_iter, val_iter, test_iter = get_data()
 
     # Init model
-    model = BIRVAE(image_shape=(1, 28, 28),
+    model = BIRVAE(Encoder, Decoder,
+                   image_shape=(1, 28, 28),
                    z_dim=20,
                    I=13.3)
 
@@ -420,3 +325,6 @@ if __name__ == "__main__":
     trainer.train(num_epochs=10,
                   lr=1e-3,
                   weight_decay=1e-5)
+
+    trainer.explore_latent_space(BIRVAE)
+    trainer.sample_interpolated_images()
