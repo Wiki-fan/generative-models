@@ -13,7 +13,7 @@ Compared to MM GAN, the only change is the generator's loss.
 NS GAN: L(G) = -E[log(D(G(z)))]
 MM GAN: L(G) =  E[log(1-D(G(z)))]
 
-In both NS GAN and MM GAN, the output of G can be interpretted as a probability.
+In both NS GAN and MM GAN, the output of G can be interpreted as a probability.
 """
 
 import torch.optim as optim

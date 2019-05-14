@@ -79,9 +79,9 @@ class WGPGANTrainer(TrainerBase):
         """
         # Initialize optimizers
         G_optimizer = optim.Adam(params=[p for p in self.model.G.parameters()
-                                         if p.requires_grad], lr=G_lr)
+                                         if p.requires_grad], lr=G_lr, betas=(0, 0.9))
         D_optimizer = optim.Adam(params=[p for p in self.model.D.parameters()
-                                         if p.requires_grad], lr=D_lr)
+                                         if p.requires_grad], lr=D_lr, betas=(0, 0.9))
 
         # Approximate steps/epoch given D_steps per epoch
         # --> roughly train in the same way as if D_step (1) == G_step (1)

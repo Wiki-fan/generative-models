@@ -1,7 +1,7 @@
 """ (DRAGAN) https://arxiv.org/abs/1705.07215
 Deep Regret Analytic GAN
 
-The output of DRAGAN's D can be interpretted as a probability, similarly to
+The output of DRAGAN's D can be interpreted as a probability, similarly to
 MMGAN and NSGAN. DRAGAN is similar to WGANGP, but seems less stable.
 
 Proposes to study GANs from a regret minimization perspective. This

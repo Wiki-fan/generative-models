@@ -38,12 +38,12 @@ class RaNSGAN(nn.Module):
     """ Super class to contain both Discriminator (D) and Generator (G)
     """
 
-    def __init__(self, Generator, Discriminator, image_size, z_dim, output_dim=1):
+    def __init__(self, Generator, Discriminator, image_shape, z_dim, output_dim=1):
         super().__init__()
 
         self.__dict__.update(locals())
 
-        self.G = Generator(image_size, z_dim)
+        self.G = Generator(image_shape, z_dim)
 
         class RaNSGANDiscriminator(Discriminator):
             """ Discriminator. Input is an image (real or generated),
@@ -56,7 +56,7 @@ class RaNSGAN(nn.Module):
             def forward(self, x):
                 return torch.sigmoid(super().forward(x))
 
-        self.D = RaNSGANDiscriminator(image_size, output_dim)
+        self.D = RaNSGANDiscriminator(image_shape, output_dim)
 
 
 class RaNSGANTrainer(TrainerBase):
@@ -216,7 +216,7 @@ if __name__ == '__main__':
     train_iter, val_iter, test_iter = get_data()
 
     # Initialize model
-    model = RaNSGAN(Generator, Discriminator, image_size=(28, 28),
+    model = RaNSGAN(Generator, Discriminator, image_shape=(28, 28),
                     z_dim=20)
 
     # Initialize trainer
